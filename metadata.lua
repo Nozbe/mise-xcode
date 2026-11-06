@@ -6,4 +6,7 @@ PLUGIN = {
   homepage = "https://github.com/qasim/mise-xcode",
   license = "MIT",
   minRuntimeVersion = "0.3.0",
+  legacyFilenames = {
+    ".xcode-version",
+  },
 }

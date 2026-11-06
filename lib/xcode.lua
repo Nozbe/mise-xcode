@@ -395,6 +395,58 @@ function xcode.developer_dir_for_install(path, search_path)
   return developer_dir or link_path
 end
 
+-- Prerelease names xcodes understands, mapped to the identifiers used by
+-- this plugin's tags.
+local xcode_version_prereleases = {
+  ["b"] = "beta",
+  ["beta"] = "beta",
+  ["rc"] = "rc",
+  ["release candidate"] = "rc",
+  ["gm seed"] = "seed",
+}
+
+-- Converts the contents of an `.xcode-version` file into this plugin's version
+-- format, reading it the way xcodes does: the number is exact ("26" and "26.0"
+-- both mean 26.0.0) and prereleases use Apple's names ("14.0b6" and
+-- "14.0 Beta 6" both mean 14.0.0-beta.6). Returns nil for anything else.
+function xcode.parse_xcode_version_file(content)
+  local line = trim(tostring(content or ""):match("^%s*([^\r\n]*)")):lower():gsub("^xcode%s+", "")
+
+  local number, rest = line:match("^(%d[%d%.]*)(.*)$")
+  if number == nil or number:find("..", 1, true) or number:sub(-1) == "." then
+    return nil
+  end
+
+  local parts = {}
+  for part in number:gmatch("%d+") do
+    table.insert(parts, tostring(tonumber(part)))
+  end
+  if #parts > 3 then
+    return nil
+  end
+  while #parts < 3 do
+    table.insert(parts, "0")
+  end
+  local version = table.concat(parts, ".")
+
+  rest = trim(rest:gsub("%s+", " "))
+  if rest == "" then
+    return version
+  end
+
+  local name, index = rest:match("^(%a[%a ]-) ?(%d*)$")
+  local prerelease = name and xcode_version_prereleases[name]
+  if prerelease == nil then
+    return nil
+  end
+
+  version = version .. "-" .. prerelease
+  if index ~= "" and tonumber(index) > 1 then
+    version = version .. "." .. tonumber(index)
+  end
+  return version
+end
+
 function xcode.context_field(ctx, key, fallback)
   local ok, value = pcall(function()
     return ctx[key]
