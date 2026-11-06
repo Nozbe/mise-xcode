@@ -245,7 +245,7 @@ function xcode.resolve_version(version)
     if record.version == version then
       return record.version
     end
-    if record.version:match("^" .. version:gsub("%.", "%%.") .. "%.") then
+    if record.version:sub(1, #version + 1) == version .. "." then
       return record.version
     end
   end
