@@ -11,13 +11,13 @@ Xcode plugin for the [Mise](https://github.com/jdx/mise) version manager.
 
 ```toml
 [plugins]
-xcode = 'https://github.com/michalpopek/mise-xcode'
+xcode = 'https://github.com/Nozbe/mise-xcode'
 ```
 
 ### Option 2: Install the plugin globally
 
 ```bash
-mise plugins install xcode https://github.com/michalpopek/mise-xcode
+mise plugins install xcode https://github.com/Nozbe/mise-xcode
 ```
 
 ## Use
