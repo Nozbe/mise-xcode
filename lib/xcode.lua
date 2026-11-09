@@ -11,6 +11,12 @@ xcode.github_api_repo_url = "https://api.github.com/repos/qasim/Xcode"
 local records_cache = nil
 local records_by_version_cache = nil
 
+-- Xcode only exists on macOS. Elsewhere the plugin installs nothing and sets no
+-- environment, so a project can list xcode in a config shared with other platforms.
+function xcode.is_macos()
+  return tostring(RUNTIME.osType):lower() == "darwin"
+end
+
 local function trim(value)
   return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
 end
@@ -152,14 +158,24 @@ local function compare_natural(left, right)
   return 0
 end
 
+local function list_remote_tags()
+  local command = "git ls-remote --tags --refs " .. shell_quote(xcode.github_tags_url)
+  if xcode.is_macos() then
+    return cmd.exec(command, { timeout = 30000 })
+  end
+
+  -- Off macOS the versions are never used to find an Xcode, so a missing git or
+  -- network must not fail the run.
+  local ok, output = pcall(cmd.exec, command, { timeout = 30000 })
+  return ok and output or ""
+end
+
 local function load_tag_records()
   if records_cache ~= nil then
     return records_cache, records_by_version_cache
   end
 
-  local output = cmd.exec("git ls-remote --tags --refs " .. shell_quote(xcode.github_tags_url), {
-    timeout = 30000,
-  })
+  local output = list_remote_tags()
   local by_version = {}
 
   for _, line in ipairs(split_lines(output)) do

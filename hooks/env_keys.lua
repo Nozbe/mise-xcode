@@ -1,6 +1,10 @@
 local xcode = require("xcode")
 
 function PLUGIN:EnvKeys(ctx)
+  if not xcode.is_macos() then
+    return {}
+  end
+
   local options = xcode.context_field(ctx, "options", {})
   local search_path = options.search_path or "/"
   local developer_dir = xcode.developer_dir_for_install(ctx.path, search_path)

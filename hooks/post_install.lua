@@ -1,6 +1,10 @@
 local xcode = require("xcode")
 
 function PLUGIN:PostInstall(ctx)
+  if not xcode.is_macos() then
+    return
+  end
+
   local sdk_info = xcode.context_field(ctx, "sdkInfo", {})[PLUGIN.name] or xcode.context_field(ctx, "main", {})
   local version = sdk_info.version or xcode.context_field(ctx, "runtimeVersion", nil)
   local options = xcode.context_field(ctx, "options", {})

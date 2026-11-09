@@ -93,6 +93,10 @@ You can specify a custom search path via the `search_path` parameter:
 xcode = {version='16.0.0', search_path='/Applications'}
 ```
 
+### Using a shared configuration on other platforms
+
+Xcode is only available on macOS. On other platforms the plugin does nothing: `mise install` succeeds without installing anything and `DEVELOPER_DIR` is not set, so `xcode` can stay in a `mise.toml` that is also used on Linux or Windows.
+
 ## Troubleshooting
 
 ### ```No Xcode <version> installation found within search path.```
