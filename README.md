@@ -35,7 +35,7 @@ or
 xcode = 'latest'
 ```
 
-This resolves to the latest stable Xcode version known by the plugin.
+This resolves to the latest stable Xcode version known by the plugin. The plugin reads the Xcode versions and their builds from [xcodereleases.com](https://xcodereleases.com/), the list that xcodes also uses.
 
 ### Selecting a specific version of Xcode
 
@@ -109,7 +109,7 @@ checksum = "sha256:b7602d41f4c6e3c47f9e9369609932b4958e589a9a36c93418fcbbe946e33
 url = "https://raw.githubusercontent.com/Nozbe/mise-xcode/bced723a7733cde1049d0fef0d6ccd96caed019b/lockfile-placeholder.txt"
 ```
 
-Installing an Xcode version therefore needs access to GitHub, even though nothing is installed from there. `mise lock` doesn't need the Xcode versions to be installed.
+Installing an Xcode version therefore needs access to GitHub, even though nothing is installed from there, and on macOS also to xcodereleases.com. `mise lock` doesn't need the Xcode versions to be installed.
 
 ## Troubleshooting
 

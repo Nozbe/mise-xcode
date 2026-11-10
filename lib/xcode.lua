@@ -4,9 +4,9 @@ local json = require("json")
 
 local xcode = {}
 
-xcode.github_repo = "https://github.com/qasim/Xcode"
-xcode.github_tags_url = xcode.github_repo .. ".git"
-xcode.github_api_repo_url = "https://api.github.com/repos/qasim/Xcode"
+-- The list of Xcode releases that xcodes also uses: each release's version,
+-- build and download link.
+xcode.releases_url = "https://xcodereleases.com/data.json"
 
 -- `mise install --locked` only installs a tool from a plugin when mise.lock
 -- records a download URL and checksum for it on the current platform. Xcode is
@@ -165,40 +165,119 @@ local function compare_natural(left, right)
   return 0
 end
 
-local function list_remote_tags()
-  local command = "git ls-remote --tags --refs " .. shell_quote(xcode.github_tags_url)
-  if xcode.is_macos() then
-    return cmd.exec(command, { timeout = 30000 })
+-- Returns the releases, or nil and an error message. Callers can't catch errors
+-- with pcall here, because mise's http module yields, which isn't allowed inside
+-- pcall. When the server can't be reached at all, mise raises the error itself.
+local function fetch_releases()
+  local failure = "Failed to download the list of Xcode releases from " .. xcode.releases_url .. ": "
+
+  local resp, err = http.get({ url = xcode.releases_url })
+  if err ~= nil or resp == nil then
+    return nil, failure .. tostring(err)
+  end
+  if resp.status_code ~= 200 then
+    return nil, failure .. "HTTP status " .. tostring(resp.status_code)
   end
 
-  -- Off macOS the versions are never used to find an Xcode, so a missing git or
-  -- network must not fail the run.
-  local ok, output = pcall(cmd.exec, command, { timeout = 30000 })
-  return ok and output or ""
+  local ok, releases = pcall(json.decode, resp.body)
+  if not ok or type(releases) ~= "table" then
+    return nil, failure .. "the response is not valid JSON"
+  end
+  return releases
 end
 
-local function load_tag_records()
+local function list_releases()
+  local releases, err = fetch_releases()
+  if releases ~= nil then
+    return releases
+  end
+
+  -- Off macOS the versions are never used to find an Xcode, so a failed
+  -- download doesn't fail the run.
+  if not xcode.is_macos() then
+    return {}
+  end
+  error(err)
+end
+
+-- How each kind of xcodereleases.com release appears in this plugin's versions.
+-- Stable and GM releases have no prerelease identifier. Kinds missing here, such
+-- as developer previews, are left out rather than mistaken for stable releases.
+local release_kinds = {
+  release = "",
+  gm = "",
+  rc = "rc",
+  beta = "beta",
+  gmSeed = "seed",
+}
+
+-- Converts an xcodereleases.com release into a record with this plugin's version
+-- format, e.g. Xcode 26.3 RC 2 becomes 26.3.0-rc.2. Returns nil for releases the
+-- plugin doesn't offer: other products, and Xcode versions older than 8.
+local function release_record(release)
+  if type(release) ~= "table" or release.name ~= "Xcode" then
+    return nil
+  end
+  local release_version = release.version
+  if type(release_version) ~= "table" or type(release_version.release) ~= "table" then
+    return nil
+  end
+
+  local number = tostring(release_version.number or "")
+  local build = release_version.build
+  if not number:match("^%d+$") and not number:match("^%d+%.%d+$") and not number:match("^%d+%.%d+%.%d+$") then
+    return nil
+  end
+  if type(build) ~= "string" or build == "" or tonumber(number:match("^%d+")) < 8 then
+    return nil
+  end
+
+  local dot_count = select(2, number:gsub("%.", ""))
+  local version = number .. string.rep(".0", 2 - dot_count)
+
+  -- Prerelease kinds are checked first, so a release that is also marked
+  -- stable keeps its prerelease identifier.
+  local kind = nil
+  for _, name in ipairs({ "rc", "beta", "gmSeed", "gm", "release" }) do
+    if release_version.release[name] ~= nil then
+      kind = name
+      break
+    end
+  end
+  if kind == nil then
+    return nil
+  end
+
+  local prerelease = release_kinds[kind]
+  if prerelease ~= "" then
+    version = version .. "-" .. prerelease
+    local index = release_version.release[kind]
+    if type(index) == "number" and index > 1 then
+      version = version .. "." .. string.format("%d", index)
+    end
+  end
+
+  local links = type(release.links) == "table" and release.links or {}
+  local download = type(links.download) == "table" and links.download or {}
+
+  return {
+    version = version,
+    build = build,
+    download_url = type(download.url) == "string" and download.url or nil,
+  }
+end
+
+local function load_records()
   if records_cache ~= nil then
     return records_cache, records_by_version_cache
   end
 
-  local output = list_remote_tags()
   local by_version = {}
-
-  for _, line in ipairs(split_lines(output)) do
-    local tag_sha = line:match("^([^%s]+)%s+")
-    local tag = line:match("refs/tags/(.+)$")
-    if tag ~= nil then
-      local version, build = tag:match("^(.+)%+(.+)$")
-      if version ~= nil and build ~= nil then
-        by_version[version] = by_version[version] or {}
-        table.insert(by_version[version], {
-          version = version,
-          build = build,
-          tag = tag,
-          tag_sha = tag_sha,
-        })
-      end
+  for _, release in ipairs(list_releases()) do
+    local record = release_record(release)
+    if record ~= nil then
+      by_version[record.version] = by_version[record.version] or {}
+      table.insert(by_version[record.version], record)
     end
   end
 
@@ -218,19 +297,19 @@ local function load_tag_records()
   return records_cache, records_by_version_cache
 end
 
-local function tag_records()
-  local records = load_tag_records()
+local function latest_records()
+  local records = load_records()
   return records
 end
 
 local function records_for_version(version)
-  local _, by_version = load_tag_records()
+  local _, by_version = load_records()
   return by_version[version] or {}
 end
 
 function xcode.available_versions()
   local result = {}
-  for _, record in ipairs(tag_records()) do
+  for _, record in ipairs(latest_records()) do
     table.insert(result, {
       version = record.version,
       note = "build " .. record.build,
@@ -251,7 +330,7 @@ function xcode.record_for_version(version, search_path)
 end
 
 function xcode.latest_stable_version()
-  for _, record in ipairs(tag_records()) do
+  for _, record in ipairs(latest_records()) do
     if record.version:find("-", 1, true) == nil then
       return record.version
     end
@@ -264,7 +343,7 @@ function xcode.resolve_version(version)
     return xcode.latest_stable_version()
   end
 
-  for _, record in ipairs(tag_records()) do
+  for _, record in ipairs(latest_records()) do
     if record.version == version then
       return record.version
     end
@@ -324,41 +403,12 @@ function xcode.find_developer_dir(build, search_path)
   return nil
 end
 
-function xcode.installation_hint(record)
-  if record == nil or record.tag_sha == nil then
-    return nil
-  end
-  if record.installation_url ~= nil then
-    return record.installation_url
-  end
-
-  local resp, err = http.get({
-    url = xcode.github_api_repo_url .. "/git/tags/" .. record.tag_sha,
-  })
-  if err ~= nil or resp == nil or resp.status_code ~= 200 then
-    return nil
-  end
-
-  local ok, body = pcall(function()
-    return json.decode(resp.body)
-  end)
-  if not ok or body == nil then
-    return nil
-  end
-
-  local message = body.message
-  local url = tostring(message or ""):match("https://%S+")
-  record.installation_url = url
-  return record.installation_url
-end
-
 function xcode.require_developer_dir(version, build, search_path, record)
   local developer_dir = xcode.find_developer_dir(build, search_path)
   if developer_dir == nil then
     local message = "No Xcode " .. version .. " installation found within search path."
-    local installation_hint = xcode.installation_hint(record)
-    if installation_hint ~= nil and installation_hint ~= "" then
-      message = message .. "\nInstall it from: " .. installation_hint
+    if record ~= nil and record.download_url ~= nil then
+      message = message .. "\nInstall it from: " .. record.download_url
     end
     error(message)
   end
@@ -428,7 +478,7 @@ function xcode.developer_dir_for_install(path, search_path)
 end
 
 -- Prerelease names xcodes understands, mapped to the identifiers used by
--- this plugin's tags.
+-- this plugin's versions.
 local xcode_version_prereleases = {
   ["b"] = "beta",
   ["beta"] = "beta",
