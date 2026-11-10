@@ -1,16 +1,18 @@
 local xcode = require("xcode")
 
 function PLUGIN:PostInstall(ctx)
+  local sdk_info = xcode.context_field(ctx, "sdkInfo", {})[PLUGIN.name] or xcode.context_field(ctx, "main", {})
+  xcode.remove_lockfile_placeholder(sdk_info.path)
+
   if not xcode.is_macos() then
     return
   end
 
-  local sdk_info = xcode.context_field(ctx, "sdkInfo", {})[PLUGIN.name] or xcode.context_field(ctx, "main", {})
   local version = sdk_info.version or xcode.context_field(ctx, "runtimeVersion", nil)
   local options = xcode.context_field(ctx, "options", {})
   local search_path = options.search_path or "/"
   local build, resolved_version, record = xcode.build_for_version(version, search_path)
 
   local developer_dir = xcode.require_developer_dir(resolved_version, build, search_path, record)
-  xcode.write_developer_dir_install(sdk_info.path, developer_dir)
+  xcode.link_developer_dir(sdk_info.path, developer_dir)
 end

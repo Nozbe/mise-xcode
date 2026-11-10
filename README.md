@@ -95,7 +95,21 @@ xcode = {version='16.0.0', search_path='/Applications'}
 
 ### Using a shared configuration on other platforms
 
-Xcode is only available on macOS. On other platforms the plugin does nothing: `mise install` succeeds without installing anything and `DEVELOPER_DIR` is not set, so `xcode` can stay in a `mise.toml` that is also used on Linux or Windows.
+Xcode is only available on macOS. On other platforms the plugin does nothing: `mise install` succeeds without looking for Xcode and `DEVELOPER_DIR` is not set, so `xcode` can stay in a `mise.toml` that is also used on Linux or Windows.
+
+### Using a lockfile
+
+`mise lock` and `mise install --locked` work for `xcode` on every platform, whether the version comes from `mise.toml` or from an `.xcode-version` file.
+
+mise's locked mode only installs a tool from a plugin when `mise.lock` records a download URL and checksum for it. Xcode is never downloaded, so the plugin gives mise a placeholder instead: [`lockfile-placeholder.txt`](lockfile-placeholder.txt), pinned to the commit that added it. mise downloads it into the install directory, and the plugin removes it again. The lockfile entries look like this:
+
+```toml
+[tools.xcode."platforms.macos-arm64"]
+checksum = "sha256:b7602d41f4c6e3c47f9e9369609932b4958e589a9a36c93418fcbbe946e338d3"
+url = "https://raw.githubusercontent.com/Nozbe/mise-xcode/bced723a7733cde1049d0fef0d6ccd96caed019b/lockfile-placeholder.txt"
+```
+
+Installing an Xcode version therefore needs access to GitHub, even though nothing is installed from there. `mise lock` doesn't need the Xcode versions to be installed.
 
 ## Troubleshooting
 
@@ -110,6 +124,17 @@ The plugin links each mise installation to the selected Xcode's `Contents/Develo
 ```bash
 mise install --force xcode@<version>
 ```
+
+### ```No lockfile URL found for xcode@<version> on platform <platform> (--locked mode)```
+
+Either `mise.lock` or the installation was created by an earlier version of the plugin, which didn't support locked mode:
+
+- If the `xcode` entries in `mise.lock` have no `url`, run `mise lock` to add them.
+- If `mise install --force --locked` fails for an Xcode that is already installed, reinstall it once without locked mode:
+
+  ```bash
+  mise install --force xcode@<version>
+  ```
 
 ### ```No Xcode version exists that corresponds to <version>.```
 

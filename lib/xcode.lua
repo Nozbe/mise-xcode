@@ -8,6 +8,17 @@ xcode.github_repo = "https://github.com/qasim/Xcode"
 xcode.github_tags_url = xcode.github_repo .. ".git"
 xcode.github_api_repo_url = "https://api.github.com/repos/qasim/Xcode"
 
+-- `mise install --locked` only installs a tool from a plugin when mise.lock
+-- records a download URL and checksum for it on the current platform. Xcode is
+-- never downloaded, so PreInstall returns lockfile-placeholder.txt instead,
+-- pinned to the commit that added it so it never changes. mise downloads it into
+-- the install directory and PostInstall removes it. Every project's mise.lock
+-- records it, so changing it makes those lockfiles stale.
+xcode.lockfile_placeholder = {
+  url = "https://raw.githubusercontent.com/Nozbe/mise-xcode/bced723a7733cde1049d0fef0d6ccd96caed019b/lockfile-placeholder.txt",
+  sha256 = "b7602d41f4c6e3c47f9e9369609932b4958e589a9a36c93418fcbbe946e338d3",
+}
+
 local records_cache = nil
 local records_by_version_cache = nil
 
@@ -33,10 +44,6 @@ end
 
 local function path_exists(path)
   return command_succeeds("test -e " .. shell_quote(path)) or command_succeeds("test -L " .. shell_quote(path))
-end
-
-local function path_is_directory(path)
-  return command_succeeds("test -d " .. shell_quote(path))
 end
 
 local function path_is_symlink(path)
@@ -358,21 +365,27 @@ function xcode.require_developer_dir(version, build, search_path, record)
   return developer_dir
 end
 
-function xcode.write_developer_dir_install(path, developer_dir)
-  local parent = path:match("^(.*)/[^/]+$")
-  if parent ~= nil then
-    cmd.exec("mkdir -p " .. shell_quote(parent), { timeout = 10000 })
-  end
+function xcode.remove_lockfile_placeholder(install_path)
+  local name = xcode.lockfile_placeholder.url:match("[^/]+$")
+  os.remove(install_path .. "/" .. name)
+end
 
-  if path_is_symlink(path) then
-    cmd.exec("rm -f " .. shell_quote(path), { timeout = 10000 })
-  elseif path_is_directory(path) then
-    cmd.exec("rmdir " .. shell_quote(path), { timeout = 10000 })
-  elseif path_exists(path) then
-    cmd.exec("rm -f " .. shell_quote(path), { timeout = 10000 })
+-- Points the install directory's Developer link at the selected Xcode. The
+-- install directory itself must stay a real directory: mise writes its own files
+-- into it after PostInstall, and they must not end up inside the Xcode bundle.
+function xcode.link_developer_dir(install_path, developer_dir)
+  -- Earlier versions of the plugin replaced the install directory itself with a
+  -- link to Xcode, so a reinstall over one of those turns it back into a directory.
+  if path_is_symlink(install_path) then
+    cmd.exec("rm -f " .. shell_quote(install_path), { timeout = 10000 })
   end
+  cmd.exec("mkdir -p " .. shell_quote(install_path), { timeout = 10000 })
 
-  cmd.exec("ln -s " .. shell_quote(developer_dir) .. " " .. shell_quote(path), { timeout = 10000 })
+  local link_path = install_path .. "/Developer"
+  if path_exists(link_path) then
+    cmd.exec("rm -f " .. shell_quote(link_path), { timeout = 10000 })
+  end
+  cmd.exec("ln -s " .. shell_quote(developer_dir) .. " " .. shell_quote(link_path), { timeout = 10000 })
 end
 
 function xcode.read_build_file(path)
@@ -381,13 +394,16 @@ function xcode.read_build_file(path)
 end
 
 function xcode.developer_dir_for_install(path, search_path)
+  -- Installs from earlier versions of the plugin link the install directory
+  -- itself to Xcode.
   if path_is_symlink(path) then
     return symlink_target(path) or path
   end
 
-  -- Migrate installs created before the install path became a symlink. The
-  -- broken-link fallback deliberately keeps DEVELOPER_DIR version-specific,
-  -- so a removed Xcode cannot silently fall back to another installation.
+  -- Installs older still only recorded the Xcode build, so the link is created
+  -- here. The broken-link fallback deliberately keeps DEVELOPER_DIR
+  -- version-specific, so a removed Xcode cannot silently fall back to another
+  -- installation.
   local link_path = path .. "/Developer"
   if path_exists(link_path) then
     return symlink_target(link_path) or link_path
