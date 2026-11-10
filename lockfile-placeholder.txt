@@ -1,0 +1,9 @@
+This file is a placeholder for mise lockfiles.
+
+`mise install --locked` only installs a tool from a plugin when mise.lock
+records a download URL and checksum for it. The xcode plugin never downloads
+Xcode, so it points mise at this file instead. mise downloads it into the
+install directory, and the plugin deletes it again.
+
+Every mise.lock that locks xcode records this file's URL and checksum, so it
+must never be changed, moved or deleted.
