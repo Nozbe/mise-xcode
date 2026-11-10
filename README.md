@@ -136,6 +136,39 @@ Either `mise.lock` or the installation was created by an earlier version of the 
   mise install --force xcode@<version>
   ```
 
+### ```.../plugins/xcode/bin/install exited with non-zero status: no exit status```
+
+The `xcode` entry in `mise.lock` names the wrong kind of plugin:
+
+```toml
+[[tools.xcode]]
+backend = "asdf:https://github.com/Nozbe/mise-xcode"
+```
+
+This happens when `mise lock` runs on a machine that hasn't installed the plugin yet. Until mise has downloaded a plugin from `[plugins]`, it assumes it is an asdf plugin, and `mise lock` doesn't download plugins. Every installation from that lockfile then fails, including on machines that have the plugin.
+
+Install the plugin, then lock again, which records `backend = "vfox:xcode"`:
+
+```bash
+mise plugins install xcode https://github.com/Nozbe/mise-xcode
+mise lock
+```
+
+On a new machine, run `mise install` before `mise lock`.
+
+### `.xcode-version` is ignored on a new machine
+
+mise only reads version files for plugins that are already installed. On a machine without the plugin, `mise install` downloads it, but has already decided which tools to install by then, so it skips Xcode without an error. `mise lock` leaves `xcode` out of `mise.lock` the same way.
+
+Running the command again works, because the plugin is installed by then. On CI, run the installation twice:
+
+```bash
+mise install --locked
+mise install --locked
+```
+
+Alternatively, install the plugin first with `mise plugins install xcode https://github.com/Nozbe/mise-xcode`, or set the version in `mise.toml` instead of `.xcode-version`, which doesn't have this problem.
+
 ### ```No Xcode version exists that corresponds to <version>.```
 
 According to the plugin, this Xcode version doesn't exist at all.
