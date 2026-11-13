@@ -2,15 +2,12 @@ local xcode = require("xcode")
 
 -- mise also runs this hook for every platform it writes into mise.lock, so it
 -- must not look at the machine it runs on. Finding the Xcode is left to
--- PostInstall.
+-- PostInstall. It returns no url: metadata.lua sets `downloads = false`, and
+-- mise stops the install if such a plugin returns one.
 function PLUGIN:PreInstall(ctx)
-  local placeholder = xcode.lockfile_placeholder
-
   if not xcode.is_macos() then
     return {
       version = ctx.version,
-      url = placeholder.url,
-      sha256 = placeholder.sha256,
       note = "Skipping Xcode, which is only available on macOS",
     }
   end
@@ -22,8 +19,6 @@ function PLUGIN:PreInstall(ctx)
 
   return {
     version = version,
-    url = placeholder.url,
-    sha256 = placeholder.sha256,
     note = "Selecting a locally installed Xcode " .. version,
   }
 end

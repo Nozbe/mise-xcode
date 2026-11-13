@@ -99,17 +99,21 @@ Xcode is only available on macOS. On other platforms the plugin does nothing: `m
 
 ### Using a lockfile
 
-`mise lock` and `mise install --locked` work for `xcode` on every platform, whether the version comes from `mise.toml` or from an `.xcode-version` file.
-
-mise's locked mode only installs a tool from a plugin when `mise.lock` records a download URL and checksum for it. Xcode is never downloaded, so the plugin gives mise a placeholder instead: [`lockfile-placeholder.txt`](lockfile-placeholder.txt), pinned to the commit that added it. mise downloads it into the install directory, and the plugin removes it again. The lockfile entries look like this:
+`mise lock` and `mise install --locked` work for `xcode` on every platform, whether the version comes from `mise.toml` or from an `.xcode-version` file. Locked mode needs mise 2026.11.7 or later, so require it in your project's `mise.toml`:
 
 ```toml
-[tools.xcode."platforms.macos-arm64"]
-checksum = "sha256:b7602d41f4c6e3c47f9e9369609932b4958e589a9a36c93418fcbbe946e338d3"
-url = "https://raw.githubusercontent.com/Nozbe/mise-xcode/bced723a7733cde1049d0fef0d6ccd96caed019b/lockfile-placeholder.txt"
+min_version = "2026.11.7"
 ```
 
-Installing an Xcode version therefore needs access to GitHub, even though nothing is installed from there, and on macOS also to xcodereleases.com. `mise lock` doesn't need the Xcode versions to be installed.
+Xcode is never downloaded, so the lockfile records only the version:
+
+```toml
+[[tools.xcode]]
+version = "26.2.0"
+backend = "vfox:xcode"
+```
+
+Installing an Xcode version on macOS needs access to xcodereleases.com. `mise lock` doesn't need the Xcode versions to be installed.
 
 ## Troubleshooting
 
@@ -127,47 +131,24 @@ mise install --force xcode@<version>
 
 ### ```No lockfile URL found for xcode@<version> on platform <platform> (--locked mode)```
 
-Either `mise.lock` or the installation was created by an earlier version of the plugin, which didn't support locked mode:
+mise is older than 2026.11.7, which added locked mode for plugins that download nothing. Upgrade mise.
 
-- If the `xcode` entries in `mise.lock` have no `url`, run `mise lock` to add them.
-- If `mise install --force --locked` fails for an Xcode that is already installed, reinstall it once without locked mode:
+Lockfiles made with plugin versions before 2.0.0 record a placeholder `url` and `checksum` for `xcode` on each platform. They still work, with both old and new versions of mise. To drop the entries, delete the `xcode` entries from `mise.lock` and run `mise lock` again.
 
-  ```bash
-  mise install --force xcode@<version>
-  ```
+### `.xcode-version` is ignored on a new machine, or ```.../plugins/xcode/bin/install exited with non-zero status: no exit status```
 
-### ```.../plugins/xcode/bin/install exited with non-zero status: no exit status```
-
-The `xcode` entry in `mise.lock` names the wrong kind of plugin:
+mise before 2026.11.7 doesn't install the plugin from `[plugins]` before it reads the configuration. On a machine without the plugin, `mise install` and `mise lock` skip a version set in `.xcode-version` without an error, and `mise lock` records a version set in `mise.toml` with the wrong kind of plugin:
 
 ```toml
 [[tools.xcode]]
 backend = "asdf:https://github.com/Nozbe/mise-xcode"
 ```
 
-This happens when `mise lock` runs on a machine that hasn't installed the plugin yet. Until mise has downloaded a plugin from `[plugins]`, it assumes it is an asdf plugin, and `mise lock` doesn't download plugins. Every installation from that lockfile then fails, including on machines that have the plugin.
-
-Install the plugin, then lock again, which records `backend = "vfox:xcode"`:
+Every installation from such a lockfile fails, including on machines that have the plugin. Upgrade mise, then lock again, which records `backend = "vfox:xcode"`:
 
 ```bash
-mise plugins install xcode https://github.com/Nozbe/mise-xcode
 mise lock
 ```
-
-On a new machine, run `mise install` before `mise lock`.
-
-### `.xcode-version` is ignored on a new machine
-
-mise only reads version files for plugins that are already installed. On a machine without the plugin, `mise install` downloads it, but has already decided which tools to install by then, so it skips Xcode without an error. `mise lock` leaves `xcode` out of `mise.lock` the same way.
-
-Running the command again works, because the plugin is installed by then. On CI, run the installation twice:
-
-```bash
-mise install --locked
-mise install --locked
-```
-
-Alternatively, install the plugin first with `mise plugins install xcode https://github.com/Nozbe/mise-xcode`, or set the version in `mise.toml` instead of `.xcode-version`, which doesn't have this problem.
 
 ### ```No Xcode version exists that corresponds to <version>.```
 

@@ -8,16 +8,11 @@ local xcode = {}
 -- build and download link.
 xcode.releases_url = "https://xcodereleases.com/data.json"
 
--- `mise install --locked` only installs a tool from a plugin when mise.lock
--- records a download URL and checksum for it on the current platform. Xcode is
--- never downloaded, so PreInstall returns lockfile-placeholder.txt instead,
--- pinned to the commit that added it so it never changes. mise downloads it into
--- the install directory and PostInstall removes it. Every project's mise.lock
--- records it, so changing it makes those lockfiles stale.
-xcode.lockfile_placeholder = {
-  url = "https://raw.githubusercontent.com/Nozbe/mise-xcode/bced723a7733cde1049d0fef0d6ccd96caed019b/lockfile-placeholder.txt",
-  sha256 = "b7602d41f4c6e3c47f9e9369609932b4958e589a9a36c93418fcbbe946e338d3",
-}
+-- Plugin versions before 2.0.0 had mise download this placeholder in locked
+-- mode, and lockfiles made with them still record its URL. mise before
+-- 2026.11.7 still downloads it into the install directory, so PostInstall
+-- removes it.
+xcode.lockfile_placeholder_name = "lockfile-placeholder.txt"
 
 local records_cache = nil
 local records_by_version_cache = nil
@@ -416,8 +411,7 @@ function xcode.require_developer_dir(version, build, search_path, record)
 end
 
 function xcode.remove_lockfile_placeholder(install_path)
-  local name = xcode.lockfile_placeholder.url:match("[^/]+$")
-  os.remove(install_path .. "/" .. name)
+  os.remove(install_path .. "/" .. xcode.lockfile_placeholder_name)
 end
 
 -- Points the install directory's Developer link at the selected Xcode. The
